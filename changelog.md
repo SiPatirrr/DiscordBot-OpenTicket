@@ -1,6 +1,6 @@
 # 📜 Changelog
 
-## Simpl
+## v1.0.0
 - ✅ Sistem ticket dibuat
 - ✅ Button open ticket
 - 🔒 Close ticket hanya untuk staff
