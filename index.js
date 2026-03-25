@@ -4,10 +4,12 @@ const {
   GatewayIntentBits,
   ActionRowBuilder,
   ButtonBuilder,
+  StringSelectMenuBuilder,
   ButtonStyle,
   ChannelType,
   PermissionsBitField,
-  Events
+  Events,
+  EmbedBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -18,74 +20,133 @@ const client = new Client({
   ]
 });
 
-const CATEGORY_ID = null; // isi kalau mau pakai kategori
-
-// READY
+// ================= READY =================
 client.once('clientReady', () => {
   console.log(`Login sebagai ${client.user.tag}`);
 });
 
-// PANEL COMMAND
+// ================= PANEL =================
 client.on('messageCreate', async (message) => {
   if (!message.guild) return;
 
+  // PANEL TICKET
   if (message.content === '!ticket') {
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎫 Sistem Ticket')
+      .setDescription(
+        'Silakan tekan tombol di bawah untuk membuat ticket.\n\n' +
+        '**Kegunaan ticket:**\n' +
+        '• Bantuan pembayaran\n' +
+        '• Kendala aplikasi\n' +
+        '• Pertanyaan lainnya'
+      )
+      .setColor(0x2b2d31)
+      .setFooter({ text: 'Support System' })
+      .setTimestamp();
+
     const button = new ButtonBuilder()
-      .setCustomId('create_ticket')
-      .setLabel('🎫 Buat Ticket')
+      .setCustomId('start_ticket')
+      .setLabel('Buat Ticket')
       .setStyle(ButtonStyle.Primary);
 
     const row = new ActionRowBuilder().addComponents(button);
 
     message.channel.send({
-      content: 'Klik tombol untuk membuat ticket',
+      embeds: [embed],
       components: [row]
     });
   }
+
+  // ================= CLOSE COMMAND =================
+  if (message.content === '!close') {
+    const guild = message.guild;
+
+    const staffRole = guild.roles.cache.find(
+      r => r.name.toLowerCase() === "pembantu raja"
+    );
+
+    if (!staffRole) return;
+
+    // cek role
+    if (!message.member.roles.cache.has(staffRole.id)) {
+      return message.reply("❌ Hanya staff yang dapat menutup ticket.");
+    }
+
+    // cek channel ticket
+    if (!message.channel.name.startsWith('ticket-')) {
+      return message.reply("❌ Ini bukan channel ticket.");
+    }
+
+    await message.reply("🔒 Ticket akan ditutup dalam 5 detik...");
+
+    setTimeout(() => {
+      message.channel.delete().catch(() => {});
+    }, 5000);
+  }
 });
 
-// INTERACTION
+// ================= INTERACTION =================
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return;
   if (!interaction.guild) return;
 
   const guild = interaction.guild;
   const user = interaction.user;
 
-  // cari role staff berdasarkan nama
   const staffRole = guild.roles.cache.find(
     r => r.name.toLowerCase() === "pembantu raja"
   );
 
   if (!staffRole) {
     return interaction.reply({
-      content: "❌ Role 'Pembantu Raja' tidak ditemukan!",
+      content: "❌ Role staff tidak ditemukan.",
       ephemeral: true
     });
   }
 
-  // ================= CREATE =================
-  if (interaction.customId === 'create_ticket') {
+  // ================= BUTTON =================
+  if (interaction.isButton() && interaction.customId === 'start_ticket') {
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('select_ticket')
+      .setPlaceholder('Pilih jenis bantuan')
+      .addOptions([
+        { label: 'Pembayaran', value: 'pembayaran', emoji: '💳' },
+        { label: 'Aplikasi', value: 'aplikasi', emoji: '📱' },
+        { label: 'Lainnya', value: 'lainnya', emoji: '❓' }
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    return interaction.reply({
+      content: 'Silakan pilih jenis masalah kamu:',
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  // ================= SELECT =================
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_ticket') {
+
+    const type = interaction.values[0];
+
+    // limit 1 ticket aktif
     const existing = guild.channels.cache.find(
       (c) => c.topic === user.id
     );
 
     if (existing) {
       return interaction.reply({
-        content: '❌ Kamu sudah punya ticket!',
+        content: '❌ Kamu masih memiliki ticket aktif.',
         ephemeral: true
       });
     }
 
-    // amanin nama
-    const safeName = user.username
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .toLowerCase();
+    const safeName = user.username.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
     const channel = await guild.channels.create({
-      name: `ticket-${safeName}`,
+      name: `ticket-${type}-${safeName}`,
       type: ChannelType.GuildText,
-      parent: CATEGORY_ID || null,
       topic: user.id,
       permissionOverwrites: [
         {
@@ -109,49 +170,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ]
     });
 
-    // tombol close
-    const closeBtn = new ButtonBuilder()
-      .setCustomId('close_ticket')
-      .setLabel('🔒 Close Ticket')
-      .setStyle(ButtonStyle.Danger);
+    // EMBED USER
+    const userEmbed = new EmbedBuilder()
+      .setTitle('📩 Ticket Dibuat')
+      .setDescription(
+        `Halo ${user},\n\n` +
+        `Terima kasih telah menghubungi kami.\n` +
+        `Jenis ticket: **${type}**\n\n` +
+        `Silakan jelaskan masalah kamu secara detail.\n` +
+        `Tim kami akan segera membantu.`
+      )
+      .setColor(0x00aaff)
+      .setFooter({ text: 'Support System' })
+      .setTimestamp();
 
-    const row = new ActionRowBuilder().addComponents(closeBtn);
+    await channel.send({ embeds: [userEmbed] });
 
-    await channel.send({
-      content: `Halo ${user} 👋\nSilakan jelaskan masalah kamu.\n\nStaff akan membantu kamu.`,
-      components: [row]
-    });
-
-    await interaction.reply({
-      content: `✅ Ticket kamu: ${channel}`,
+    interaction.reply({
+      content: `✅ Ticket berhasil dibuat: ${channel}`,
       ephemeral: true
     });
 
-    // AUTO CLOSE 7 HARI
+    // AUTO CLOSE
     setTimeout(async () => {
-      if (!channel || !channel.deletable) return;
+      if (!channel.deletable) return;
 
-      await channel.send("⏰ Ticket otomatis ditutup setelah 7 hari.");
+      await channel.send("⏰ Ticket ditutup otomatis (7 hari).");
       setTimeout(() => channel.delete().catch(() => {}), 5000);
     }, 7 * 24 * 60 * 60 * 1000);
-  }
-
-  // ================= CLOSE =================
-  if (interaction.customId === 'close_ticket') {
-    const member = await guild.members.fetch(user.id);
-
-    if (!member.roles.cache.has(staffRole.id)) {
-      return interaction.reply({
-        content: '❌ Hanya staff yang bisa menutup ticket!',
-        ephemeral: true
-      });
-    }
-
-    await interaction.reply("🔒 Menutup ticket dalam 5 detik...");
-
-    setTimeout(() => {
-      interaction.channel.delete().catch(() => {});
-    }, 5000);
   }
 });
 
