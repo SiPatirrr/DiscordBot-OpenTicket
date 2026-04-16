@@ -1,0 +1,80 @@
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  EmbedBuilder
+} = require('discord.js');
+
+const payments = require('../store/payments');
+const { getStaffRole } = require('../utils/staff');
+const { PAYMENT_LOG_CHANNEL, PAYMENT_VERIF_CHANNEL } = require('../config');
+
+async function logPayment(guild, user, submittedBy, amount, method, note = "-") {
+
+  const logChannel = guild.channels.cache.find(
+    c => c.name === PAYMENT_LOG_CHANNEL && c.type === ChannelType.GuildText
+  );
+  const verifChannel = guild.channels.cache.find(
+    c => c.name === PAYMENT_VERIF_CHANNEL && c.type === ChannelType.GuildText
+  );
+
+  if (!logChannel || !verifChannel) return;
+
+  const paymentId = Date.now().toString();
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  const commonFields = [
+    { name: "🆔  Payment ID",     value: `\`${paymentId}\``,                inline: false },
+    { name: "👤  User",           value: `<@${user.id}>`,                    inline: true  },
+    { name: "💰  Jumlah",         value: `**Rp ${amount}**`,                inline: true  },
+    { name: "📱  Metode",         value: method,                            inline: true  },
+    { name: "📝  Catatan",        value: note,                              inline: false },
+    { name: "📊  Status",         value: "🟡  **PENDING**",                 inline: true  },
+    { name: "🕐  Waktu",          value: `<t:${timestamp}:F>`,              inline: true  }
+  ];
+
+  const logEmbed = new EmbedBuilder()
+    .setTitle("📋 Payment Request")
+    .addFields(...commonFields)
+    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
+    .setColor(0xf0b429)
+    .setFooter({ text: `Payment System  •  Diinput oleh ${submittedBy.username}`, iconURL: submittedBy.displayAvatarURL() })
+    .setTimestamp();
+
+  const verifEmbed = new EmbedBuilder()
+    .setTitle("📋 Payment Request")
+    .setDescription(`> Permintaan pembayaran baru telah masuk dan menunggu verifikasi admin.\n\u200b`)
+    .addFields(...commonFields)
+    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
+    .setColor(0xf0b429)
+    .setFooter({ text: `Payment System  •  Diinput oleh ${submittedBy.username}`, iconURL: submittedBy.displayAvatarURL() })
+    .setTimestamp();
+
+  const logMsg = await logChannel.send({ embeds: [logEmbed] });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`approve_${paymentId}`)
+      .setLabel("✅  Approve")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`reject_${paymentId}`)
+      .setLabel("❌  Reject")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  const verifMsg = await verifChannel.send({
+    content: `> 🔔 **Verifikasi diperlukan** — <@&${getStaffRole(guild)?.id ?? ''}>`,
+    embeds: [verifEmbed],
+    components: [row]
+  });
+
+  payments.set(paymentId, {
+    userId:        user.id,
+    logMessageId:  logMsg.id,
+    verifMessageId: verifMsg.id
+  });
+}
+
+module.exports = logPayment;

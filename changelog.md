@@ -9,3 +9,8 @@
 ## v1.0.1
 - ➕ Ditambahkan category permasalahan
 - 📱 UI diperbarui
+
+## v1.0.2
+- ➕ Ditambahkan Fitur Payment-Logs dan Payment-Verif (Untuk Admin/Staff)
+- 🔧 Code dioptimalkan dan dipisah berdasarkan fungsi
+- 📱 Embed diperbarui
